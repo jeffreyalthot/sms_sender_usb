@@ -1,6 +1,6 @@
 # Envoi de message depuis `message.txt` vers `numero.txt`
 
-Script Python (librairie standard uniquement) pour envoyer un message vers une liste de numéros, en parallèle, via Internet.
+Script Python (librairie standard uniquement, avec `smtplib`) pour envoyer un message vers une liste de numéros, en parallèle, via Internet.
 
 ## ⚠️ Limitation importante
 
@@ -35,6 +35,7 @@ python3 send_sms.py \
   --gateway-domain free-access \
   --smtp-host localhost \
   --smtp-port 25 \
+  --smtp-encryption none \
   --smtp-sender noreply@example.com
 ```
 
@@ -42,7 +43,36 @@ Options utiles:
 
 - `--workers 100` pour maximiser l'envoi parallèle
 - `--smtp-user` / `--smtp-pass` si votre SMTP demande un login
-- `--smtp-ssl` si vous utilisez SMTP SSL direct (port 465)
+- `--smtp-encryption starttls` pour STARTTLS (recommandé, notamment pour Microsoft 365 / Office365)
+- `--smtp-encryption ssl` pour SMTP SSL direct (port 465)
+- `--smtp-encryption none` pour SMTP sans chiffrement (souvent local uniquement)
+- `--smtp-ssl` reste disponible (compatibilité) et équivaut à `--smtp-encryption ssl`
+
+## Configuration recommandée (Microsoft 365)
+
+- Serveur SMTP: `smtp.office365.com`
+- Port: `587`
+- Chiffrement: `STARTTLS`
+- Authentification: `Oui`
+- Utilisateur: votre adresse email Microsoft 365
+- Mot de passe: mot de passe du compte ou mot de passe d'application
+
+Exemple générique:
+
+```text
+SMTP Host: smtp.office365.com
+SMTP Port: 587
+Encryption: STARTTLS
+Authentication: true
+Username: votre_email@domaine.com
+Password: votre_mot_de_passe
+```
+
+Points importants:
+
+- Le port 587 est recommandé par Microsoft pour l'envoi via SMTP authentifié.
+- Le port 25 est souvent bloqué par les fournisseurs internet / environnements cloud.
+- Pour la plupart des applications (Python, PHP, Node, imprimante, NAS), STARTTLS sur 587 est la bonne option.
 
 ### Cas Outlook / Office365 (erreur 530 5.7.57)
 
@@ -56,6 +86,7 @@ python3 send_sms.py \
   --gateway-domain msg.telus.com \
   --smtp-host smtp.office365.com \
   --smtp-port 587 \
+  --smtp-encryption starttls \
   --smtp-sender moncompte@outlook.com \
   --smtp-user moncompte@outlook.com \
   --smtp-pass 'mot_de_passe_ou_app_password'
