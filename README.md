@@ -44,6 +44,26 @@ Options utiles:
 - `--smtp-user` / `--smtp-pass` si votre SMTP demande un login
 - `--smtp-ssl` si vous utilisez SMTP SSL direct (port 465)
 
+### Cas Outlook / Office365 (erreur 530 5.7.57)
+
+Si vous voyez `Client not authenticated to send mail`, activez
+l'authentification SMTP et utilisez un expéditeur qui correspond au compte.
+
+Exemple:
+
+```bash
+python3 send_sms.py \
+  --gateway-domain msg.telus.com \
+  --smtp-host smtp.office365.com \
+  --smtp-port 587 \
+  --smtp-sender moncompte@outlook.com \
+  --smtp-user moncompte@outlook.com \
+  --smtp-pass 'mot_de_passe_ou_app_password'
+```
+
+Note: si `--smtp-user` est omis mais que `--smtp-pass` est fourni, le script
+réutilise automatiquement `--smtp-sender` comme utilisateur SMTP.
+
 ## Exemple de `numero.txt`
 
 ```text

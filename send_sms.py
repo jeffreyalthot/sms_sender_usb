@@ -33,6 +33,29 @@ class SMTPConfig:
     use_tls: bool
 
 
+def normalize_smtp_config(smtp_conf: SMTPConfig) -> SMTPConfig:
+    """Applique des valeurs implicites utiles pour les SMTP publics.
+
+    Cas courant: avec Outlook/Office365, l'utilisateur oublie --smtp-user
+    mais fournit un sender + mot de passe. On réutilise alors l'expéditeur
+    comme identifiant SMTP.
+    """
+    if smtp_conf.username or not smtp_conf.password:
+        return smtp_conf
+
+    if "@" not in smtp_conf.sender:
+        return smtp_conf
+
+    return SMTPConfig(
+        host=smtp_conf.host,
+        port=smtp_conf.port,
+        sender=smtp_conf.sender,
+        username=smtp_conf.sender,
+        password=smtp_conf.password,
+        use_tls=smtp_conf.use_tls,
+    )
+
+
 def read_message(path: Path) -> str:
     message = path.read_text(encoding="utf-8").strip()
     if not message:
@@ -103,7 +126,13 @@ def send_one(
                 smtp.send_message(msg)
         return number, True, "OK"
     except (smtplib.SMTPException, OSError, socket.error) as exc:
-        return number, False, str(exc)
+        hint = ""
+        if isinstance(exc, smtplib.SMTPSenderRefused) and exc.smtp_code == 530:
+            hint = (
+                " | Astuce: activez l'auth SMTP (--smtp-user/--smtp-pass) "
+                "et utilisez un expéditeur identique au compte SMTP."
+            )
+        return number, False, f"{exc}{hint}"
 
 
 def send_bulk(
@@ -172,13 +201,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    smtp_conf = SMTPConfig(
+    smtp_conf = normalize_smtp_config(
+        SMTPConfig(
         host=args.smtp_host,
         port=args.smtp_port,
         sender=args.smtp_sender,
         username=args.smtp_user,
         password=args.smtp_pass,
         use_tls=args.smtp_ssl,
+        )
     )
 
     gateway_domain = resolve_gateway_domain(args.gateway_domain)
