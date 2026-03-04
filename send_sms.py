@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""Envoi en masse d'un message texte vers une liste de numéros via une passerelle SMTP->SMS.
+"""Envoi en masse d'un message texte vers une passerelle SMTP->SMS.
 
-Contraintes:
-- Sans API HTTP externe (utilise uniquement la librairie standard Python)
-- Sans modem USB / dongle
-- Envoi via Internet
-
-Important: l'envoi réel nécessite une passerelle opérateur (ex: numero@domaine-passerelle)
-ou un serveur SMTP autorisé à relayer les messages.
+Le script peut utiliser un domaine passerelle explicitement fourni
+ou un préréglage "libre d'accès" (sans API HTTP), basé sur les
+passerelles email-to-SMS d'opérateurs qui ne demandent pas de clé API.
 """
 
 from __future__ import annotations
@@ -22,6 +18,9 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Iterable
+
+
+FREE_ACCESS_GATEWAY_DOMAIN = os.getenv("FREE_SMS_GATEWAY_DOMAIN", "tmomail.net")
 
 
 @dataclass(frozen=True)
@@ -66,6 +65,13 @@ def build_email(sender: str, to_address: str, body: str, subject: str) -> EmailM
     msg["Subject"] = subject
     msg.set_content(body)
     return msg
+
+
+def resolve_gateway_domain(raw_gateway_domain: str) -> str:
+    gateway_domain = raw_gateway_domain.strip().lower()
+    if gateway_domain in {"libre", "free", "free-access"}:
+        return FREE_ACCESS_GATEWAY_DOMAIN
+    return gateway_domain
 
 
 def send_one(
@@ -138,7 +144,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--message-file", default="message.txt", type=Path)
     parser.add_argument("--numbers-file", default="numero.txt", type=Path)
-    parser.add_argument("--gateway-domain", required=True, help="Ex: sms.operateur.example")
+    parser.add_argument(
+        "--gateway-domain",
+        default="free-access",
+        help=(
+            "Domaine passerelle (ex: tmomail.net) ou alias 'libre'/'free-access' "
+            f"(résout vers {FREE_ACCESS_GATEWAY_DOMAIN})."
+        ),
+    )
     parser.add_argument("--smtp-host", default=os.getenv("SMTP_HOST", "localhost"))
     parser.add_argument("--smtp-port", type=int, default=int(os.getenv("SMTP_PORT", "25")))
     parser.add_argument("--smtp-sender", default=os.getenv("SMTP_SENDER", "noreply@localhost"))
@@ -168,13 +181,17 @@ def main() -> int:
         use_tls=args.smtp_ssl,
     )
 
+    gateway_domain = resolve_gateway_domain(args.gateway_domain)
     message = read_message(args.message_file)
     numbers = read_numbers(args.numbers_file)
 
-    print(f"Envoi vers {len(numbers)} numéros avec {args.workers} workers...")
+    print(
+        f"Envoi vers {len(numbers)} numéros avec {args.workers} workers "
+        f"(gateway: {gateway_domain})..."
+    )
     ok, ko = send_bulk(
         smtp_conf=smtp_conf,
-        gateway_domain=args.gateway_domain,
+        gateway_domain=gateway_domain,
         numbers=numbers,
         body=message,
         subject=args.subject,
