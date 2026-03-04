@@ -30,7 +30,7 @@ class SMTPConfig:
     sender: str
     username: str | None
     password: str | None
-    use_tls: bool
+    encryption: str
 
 
 def normalize_smtp_config(smtp_conf: SMTPConfig) -> SMTPConfig:
@@ -52,8 +52,22 @@ def normalize_smtp_config(smtp_conf: SMTPConfig) -> SMTPConfig:
         sender=smtp_conf.sender,
         username=smtp_conf.sender,
         password=smtp_conf.password,
-        use_tls=smtp_conf.use_tls,
+        encryption=smtp_conf.encryption,
     )
+
+
+def normalize_encryption(encryption: str, smtp_ssl_flag: bool) -> str:
+    """Normalise le type de chiffrement SMTP.
+
+    Accepte none/starttls/ssl. Le drapeau historique --smtp-ssl force ssl.
+    """
+    if smtp_ssl_flag:
+        return "ssl"
+
+    normalized = encryption.strip().lower()
+    if normalized not in {"none", "starttls", "ssl"}:
+        raise ValueError("--smtp-encryption doit être: none, starttls ou ssl")
+    return normalized
 
 
 def read_message(path: Path) -> str:
@@ -109,7 +123,7 @@ def send_one(
     msg = build_email(smtp_conf.sender, to_addr, body, subject)
 
     try:
-        if smtp_conf.use_tls:
+        if smtp_conf.encryption == "ssl":
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL(smtp_conf.host, smtp_conf.port, timeout=timeout_s, context=context) as smtp:
                 if smtp_conf.username:
@@ -118,7 +132,11 @@ def send_one(
         else:
             with smtplib.SMTP(smtp_conf.host, smtp_conf.port, timeout=timeout_s) as smtp:
                 smtp.ehlo()
-                if smtp.has_extn("starttls"):
+                if smtp_conf.encryption == "starttls":
+                    if not smtp.has_extn("starttls"):
+                        raise smtplib.SMTPException(
+                            "Le serveur SMTP ne supporte pas STARTTLS alors qu'il est requis"
+                        )
                     smtp.starttls(context=ssl.create_default_context())
                     smtp.ehlo()
                 if smtp_conf.username:
@@ -186,7 +204,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smtp-sender", default=os.getenv("SMTP_SENDER", "noreply@localhost"))
     parser.add_argument("--smtp-user", default=os.getenv("SMTP_USER"))
     parser.add_argument("--smtp-pass", default=os.getenv("SMTP_PASS"))
-    parser.add_argument("--smtp-ssl", action="store_true", help="Utiliser SMTP_SSL directement")
+    parser.add_argument(
+        "--smtp-encryption",
+        default=os.getenv("SMTP_ENCRYPTION", "starttls"),
+        help="Type de chiffrement SMTP: none, starttls (défaut), ssl",
+    )
+    parser.add_argument(
+        "--smtp-ssl",
+        action="store_true",
+        help="Compatibilité: équivaut à --smtp-encryption ssl",
+    )
     parser.add_argument("--subject", default="SMS")
     parser.add_argument(
         "--workers",
@@ -201,6 +228,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
+    try:
+        encryption = normalize_encryption(args.smtp_encryption, args.smtp_ssl)
+    except ValueError as exc:
+        print(f"Erreur configuration SMTP: {exc}")
+        return 2
+
     smtp_conf = normalize_smtp_config(
         SMTPConfig(
         host=args.smtp_host,
@@ -208,7 +241,7 @@ def main() -> int:
         sender=args.smtp_sender,
         username=args.smtp_user,
         password=args.smtp_pass,
-        use_tls=args.smtp_ssl,
+        encryption=encryption,
         )
     )
 
